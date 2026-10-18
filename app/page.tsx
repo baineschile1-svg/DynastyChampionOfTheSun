@@ -417,7 +417,6 @@ export default function Home() {
         });
         setStandings(data.sort((a, b) => b.wins - a.wins || b.pf - a.pf));
 
-        
         // Matchups + Sleeper weekly projections (half PPR) via proxy
         let projMap: Record<string, number> = {};
         try {
@@ -792,36 +791,43 @@ export default function Home() {
                 )}
                 . Draft picks not included.
               </p>
-              <div className="flex flex-col xl:flex-row gap-6">
-                <div className="xl:w-80 shrink-0 border border-teal-900/40 rounded-xl overflow-hidden bg-zinc-800/40">
-                  <div className="px-5 py-4 border-b border-zinc-700 bg-zinc-900/50"><h3 className="font-semibold text-teal-300">Starters vs Bench</h3></div>
-                  <div className="max-h-[520px] overflow-y-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-zinc-400 border-b border-zinc-700 bg-zinc-900/30">
-                          <th className="px-4 py-2 text-left font-medium">TEAM</th>
-                          <th className="px-4 py-2 text-right font-medium">STARTERS</th>
-                          <th className="px-4 py-2 text-right font-medium">BENCH</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {valueSorted.map((team) => (
-                          <tr key={team.team} onClick={() => setSelectedTeam(team)} className={`border-b border-zinc-700/50 last:border-0 hover:bg-teal-950/30 cursor-pointer h-12 ${selectedTeam?.team === team.team ? "bg-teal-950/50" : ""}`}>
-                            <td className="px-4 py-0 font-medium align-middle">
-                              <div className="flex items-center gap-2">
-                                <span className="w-6 h-6 rounded-full bg-teal-600 flex items-center justify-center text-xs shrink-0">{teamInitials(team.team)}</span>
-                                <span className="leading-tight">{team.team}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-0 text-right text-teal-400 align-middle">{(team.starters || 0).toLocaleString()}</td>
-                            <td className="px-4 py-0 text-right text-zinc-400 align-middle">{(team.bench || 0).toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+
+              {/* Starters vs Bench + Details — side-by-side on md+, stacked on mobile, no internal scroll */}
+              <div className="flex flex-col lg:flex-row gap-6">
+                <div className="lg:w-80 shrink-0 border border-teal-900/40 rounded-xl overflow-hidden bg-zinc-800/40">
+                  <div className="px-5 py-4 border-b border-zinc-700 bg-zinc-900/50">
+                    <h3 className="font-semibold text-teal-300">Starters vs Bench</h3>
                   </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-zinc-400 border-b border-zinc-700 bg-zinc-900/30">
+                        <th className="px-4 py-2 text-left font-medium">TEAM</th>
+                        <th className="px-4 py-2 text-right font-medium">STARTERS</th>
+                        <th className="px-4 py-2 text-right font-medium">BENCH</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {valueSorted.map((team) => (
+                        <tr
+                          key={team.team}
+                          onClick={() => setSelectedTeam(team)}
+                          className={`border-b border-zinc-700/50 last:border-0 hover:bg-teal-950/30 cursor-pointer h-12 ${selectedTeam?.team === team.team ? "bg-teal-950/50" : ""}`}
+                        >
+                          <td className="px-4 py-0 font-medium align-middle">
+                            <div className="flex items-center gap-2">
+                              <span className="w-6 h-6 rounded-full bg-teal-600 flex items-center justify-center text-xs shrink-0">{teamInitials(team.team)}</span>
+                              <span className="leading-tight">{team.team}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-0 text-right text-teal-400 align-middle">{(team.starters || 0).toLocaleString()}</td>
+                          <td className="px-4 py-0 text-right text-zinc-400 align-middle">{(team.bench || 0).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="flex-1 border border-teal-900/40 rounded-xl p-6 min-h-[400px] bg-zinc-800/30">
+
+                <div className="flex-1 border border-teal-900/40 rounded-xl p-6 bg-zinc-800/30 min-h-[300px]">
                   {selectedTeam ? (
                     <>
                       <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-teal-200">
