@@ -191,7 +191,7 @@ function formatPick(pick: any): string {
   const round = pick.round || "?";
   const season = pick.season || "";
   const suffix = round === 1 ? "st" : round === 2 ? "nd" : round === 3 ? "rd" : "th";
-  return `${season} ${round}${suffix} Rd`;
+  return `${season} \( {round} \){suffix} Rd`;
 }
 
 function teamInitials(name: string) {
@@ -233,6 +233,7 @@ export default function Home() {
   const [playerSearch, setPlayerSearch] = useState("");
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const PAGE_SIZE = 10;
 
@@ -343,7 +344,7 @@ export default function Home() {
         const txCountByTeam: Record<string, number> = {};
         for (let w = 1; w <= week; w++) {
           try {
-            const txRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/transactions/${w}`);
+            const txRes = await fetch(`https://api.sleeper.app/v1/league/\( {leagueId}/transactions/ \){w}`);
             const txs = await txRes.json();
             txs.forEach((tx: any) => {
               if (tx.status !== "complete") return;
@@ -433,7 +434,7 @@ export default function Home() {
           console.warn("Sleeper projections failed", e);
         }
 
-        const matchupsRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
+        const matchupsRes = await fetch(`https://api.sleeper.app/v1/league/\( {leagueId}/matchups/ \){week}`);
         const matchupData = await matchupsRes.json();
 
         const starterProj: Record<number, number> = {};
@@ -505,7 +506,7 @@ export default function Home() {
   const maxVal = Math.max(...valueSorted.map(t => t.value || 0), 1);
   const bar = (val: number, color: string) => (
     <div className="w-24 bg-zinc-800 rounded-full h-2 mt-1">
-      <div className={`h-2 rounded-full ${color}`} style={{ width: `${Math.min(100, ((val || 0) / maxVal) * 100)}%` }} />
+      <div className={`h-2 rounded-full \( {color}`} style={{ width: ` \){Math.min(100, ((val || 0) / maxVal) * 100)}%` }} />
     </div>
   );
   const teams = ["all", ...new Set(standings.map(t => t.team))];
@@ -542,6 +543,11 @@ export default function Home() {
     { id: "charter" as Section, label: "League Charter" },
   ];
 
+  const handleNavClick = (id: Section) => {
+    setSection(id);
+    setMobileMenuOpen(false);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
@@ -552,21 +558,75 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
-      <aside className="w-72 border-r border-teal-900/40 bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 p-6 shrink-0">
-        <div className="mb-8">
-          <h1 className="text-lg font-bold leading-tight bg-gradient-to-r from-teal-300 to-zinc-100 bg-clip-text text-transparent">Dynasty Fantasy Football: Champion Of The Sun</h1>
-          <p className="text-xs text-teal-500/70 mt-1">2026</p>
+      {/* Mobile top bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-zinc-900/95 border-b border-teal-900/40 px-4 py-3 flex items-center justify-between">
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className="p-2 rounded-lg hover:bg-zinc-800"
+          aria-label="Open menu"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <span className="text-sm font-semibold text-teal-300 truncate">Champion Of The Sun</span>
+        <div className="w-10" />
+      </div>
+
+      {/* Backdrop for mobile menu */}
+      {mobileMenuOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/60 z-40"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed md:static inset-y-0 left-0 z-50
+          w-72 border-r border-teal-900/40 bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 p-6 shrink-0
+          transform transition-transform duration-200 ease-in-out
+          ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
+          md:translate-x-0
+        `}
+      >
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold leading-tight bg-gradient-to-r from-teal-300 to-zinc-100 bg-clip-text text-transparent">
+              Dynasty Fantasy Football: Champion Of The Sun
+            </h1>
+            <p className="text-xs text-teal-500/70 mt-1">2026</p>
+          </div>
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="md:hidden p-1 text-zinc-400 hover:text-white"
+            aria-label="Close menu"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
         <nav className="space-y-1">
           {navItems.map((item) => (
-            <button key={item.id} onClick={() => setSection(item.id)} className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-all min-h-[44px] ${section === item.id ? "bg-teal-600 text-white shadow-lg shadow-teal-900/50" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+            <button
+              key={item.id}
+              onClick={() => handleNavClick(item.id)}
+              className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-all min-h-[44px] ${
+                section === item.id
+                  ? "bg-teal-600 text-white shadow-lg shadow-teal-900/50"
+                  : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
+              }`}
+            >
               {item.label}
             </button>
           ))}
         </nav>
       </aside>
 
-      <main className="flex-1 p-4 md:p-8 overflow-auto">
+      {/* Main content */}
+      <main className="flex-1 p-4 md:p-8 overflow-auto pt-16 md:pt-8">
         {section === "standings" && (
           <div>
             <PageTitle>Standings & Matchups</PageTitle>
@@ -792,7 +852,6 @@ export default function Home() {
                 . Draft picks not included.
               </p>
 
-              {/* Starters vs Bench + Details — side-by-side on md+, stacked on mobile, no internal scroll */}
               <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-80 shrink-0 border border-teal-900/40 rounded-xl overflow-hidden bg-zinc-800/40">
                   <div className="px-5 py-4 border-b border-zinc-700 bg-zinc-900/50">
@@ -867,7 +926,7 @@ export default function Home() {
         {section === "history" && (
           <div>
             <PageTitle>Draft History</PageTitle>
-            <div className="flex justify-center gap-4 mb-6 text-sm">
+            <div className="flex justify-center gap-4 mb-6 text-sm flex-wrap">
               <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-blue-600" /> QB</span>
               <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-green-600" /> RB</span>
               <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-purple-600" /> WR</span>
