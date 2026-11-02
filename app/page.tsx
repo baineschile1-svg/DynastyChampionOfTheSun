@@ -417,39 +417,13 @@ export default function Home() {
         });
         setStandings(data.sort((a, b) => b.wins - a.wins || b.pf - a.pf));
 
-        // Projections
-        let projMap: Record<string, number> = {};
-        try {
-          const projRes = await fetch(`/api/projections?week=${week}`);
-          if (projRes.ok) {
-            const projData = await projRes.json();
-            if (projData && typeof projData === "object") {
-              Object.entries(projData).forEach(([id, p]: [string, any]) => {
-                const pts = Number(p?.stats?.pts_half_ppr || p?.stats?.pts_ppr || p?.pts_half_ppr || 0);
-                if (id && pts > 0) projMap[id] = pts;
-              });
-            }
-          }
-        } catch (e) {
-          console.warn("Projections failed", e);
-        }
-
-        // Matchups with projections
+        // Matchups
         let pairs: MatchupPair[] = [];
         try {
           const matchupsRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
           if (matchupsRes.ok) {
             const matchupData = await matchupsRes.json();
             if (Array.isArray(matchupData) && matchupData.length > 0) {
-              const starterProj: Record<number, number> = {};
-              matchupData.forEach((m: any) => {
-                let total = 0;
-                (m.starters || []).forEach((id: string) => {
-                  if (id) total += projMap[id] || 0;
-                });
-                starterProj[m.roster_id] = Math.round(total * 10) / 10;
-              });
-
               const byMatchup: Record<number, any[]> = {};
               matchupData.forEach((m: any) => {
                 if (!byMatchup[m.matchup_id]) byMatchup[m.matchup_id] = [];
@@ -464,8 +438,8 @@ export default function Home() {
                     team2: teamByRoster[m2.roster_id] || "Unknown",
                     points1: Number(m1.points) || 0,
                     points2: Number(m2.points) || 0,
-                    proj1: starterProj[m1.roster_id] || 0,
-                    proj2: starterProj[m2.roster_id] || 0,
+                    proj1: 0,
+                    proj2: 0,
                   });
                 }
               });
@@ -688,7 +662,6 @@ export default function Home() {
 
             <div className="text-center mb-4">
               <h3 className="text-xl font-semibold text-teal-300">Week {currentWeek} Matchups</h3>
-              <p className="text-xs text-zinc-500 mt-1">Projections: Sleeper weekly half-PPR (full week)</p>
             </div>
             <div className="space-y-3 md:space-y-4 max-w-3xl mx-auto mb-10">
               {matchups.length === 0 && <p className="text-center text-zinc-500">No matchups loaded yet.</p>}
@@ -701,7 +674,6 @@ export default function Home() {
                         {m.team1}
                       </div>
                       <div className="text-2xl font-bold mt-1 text-teal-300">{(m.points1 || 0).toFixed(1)}</div>
-                      <div className="text-xs text-zinc-500">Proj {m.proj1.toFixed(1)}</div>
                     </div>
                     <div className="text-zinc-500 text-sm font-medium">VS</div>
                     <div className="flex-1 text-center sm:text-left">
@@ -710,7 +682,6 @@ export default function Home() {
                         {m.team2}
                       </div>
                       <div className="text-2xl font-bold mt-1 text-teal-300">{(m.points2 || 0).toFixed(1)}</div>
-                      <div className="text-xs text-zinc-500">Proj {m.proj2.toFixed(1)}</div>
                     </div>
                   </div>
                 </div>
