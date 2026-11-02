@@ -423,11 +423,12 @@ export default function Home() {
           const projRes = await fetch(`/api/projections?week=${week}`);
           if (projRes.ok) {
             const projData = await projRes.json();
-            (projData || []).forEach((p: any) => {
-              const id = p.player_id;
-              const pts = Number(p.stats?.pts_half_ppr || p.stats?.pts_ppr || 0);
-              if (id) projMap[id] = pts;
-            });
+            if (projData && typeof projData === "object") {
+              Object.entries(projData).forEach(([id, p]: [string, any]) => {
+                const pts = Number(p?.stats?.pts_half_ppr || p?.stats?.pts_ppr || p?.pts_half_ppr || 0);
+                if (id && pts > 0) projMap[id] = pts;
+              });
+            }
           }
         } catch (e) {
           console.warn("Projections failed", e);
