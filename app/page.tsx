@@ -433,36 +433,31 @@ export default function Home() {
           console.warn("Projections failed", e);
         }
 
-        // Matchups (safer)
+        // Matchups (simpler pairing)
         let pairs: MatchupPair[] = [];
         try {
           const matchupsRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
           if (matchupsRes.ok) {
             const matchupData = await matchupsRes.json();
-            if (Array.isArray(matchupData)) {
-              const starterProj: Record<number, number> = {};
+            if (Array.isArray(matchupData) && matchupData.length > 0) {
+              const byMatchup: Record<number, any[]> = {};
               matchupData.forEach((m: any) => {
-                let total = 0;
-                (m.starters || []).forEach((id: string) => {
-                  if (id) total += projMap[id] || 0;
-                });
-                starterProj[m.roster_id] = Math.round(total * 10) / 10;
+                if (!byMatchup[m.matchup_id]) byMatchup[m.matchup_id] = [];
+                byMatchup[m.matchup_id].push(m);
               });
 
-              const seen = new Set<number>();
-              matchupData.forEach((m: any) => {
-                if (seen.has(m.matchup_id)) return;
-                seen.add(m.matchup_id);
-                const opp = matchupData.find((x: any) => x.matchup_id === m.matchup_id && x.roster_id !== m.roster_id);
-                if (!opp) return;
-                pairs.push({
-                  team1: teamByRoster[m.roster_id] || "Unknown",
-                  team2: teamByRoster[opp.roster_id] || "Unknown",
-                  points1: Number(m.points) || 0,
-                  points2: Number(opp.points) || 0,
-                  proj1: starterProj[m.roster_id] || 0,
-                  proj2: starterProj[opp.roster_id] || 0,
-                });
+              Object.values(byMatchup).forEach((group) => {
+                if (group.length >= 2) {
+                  const [m1, m2] = group;
+                  pairs.push({
+                    team1: teamByRoster[m1.roster_id] || "Unknown",
+                    team2: teamByRoster[m2.roster_id] || "Unknown",
+                    points1: Number(m1.points) || 0,
+                    points2: Number(m2.points) || 0,
+                    proj1: 0,
+                    proj2: 0,
+                  });
+                }
               });
             }
           }
@@ -471,7 +466,7 @@ export default function Home() {
         }
         setMatchups(pairs);
 
-        // News via proxy
+        // News
         try {
           const newsRes = await fetch("/api/news");
           if (newsRes.ok) {
@@ -564,7 +559,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
-      {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-zinc-900/95 border-b border-teal-900/40 px-4 py-3 flex items-center justify-between">
         <button
           onClick={() => setMobileMenuOpen(true)}
