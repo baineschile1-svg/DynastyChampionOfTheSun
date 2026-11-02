@@ -37,9 +37,6 @@ type ValueSource = "statsguy" | "fantasycalc";
 type Section = "standings" | "transactions" | "values" | "history" | "charter";
 type TxTypeFilter = "all" | "waiver_fa" | "trade";
 
-const FP_KEY = "S1zuNx6MSd62vH9KcucxL8R7ZTq4yQpc8LJOhciA";
-const FP_BASE = "https://api.fantasypros.com/public/v2/json";
-
 const sheetBoards: DraftBoard[] = [
   {
     year: 2022,
@@ -206,9 +203,9 @@ function badgeColor(type: string) {
 
 function PageTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative mb-8">
+    <div className="relative mb-6 md:mb-8">
       <div className="absolute inset-0 bg-gradient-to-r from-teal-900/40 via-teal-800/20 to-transparent rounded-2xl blur-sm" />
-      <h2 className="relative text-3xl font-bold text-center py-4 bg-gradient-to-r from-teal-200 to-white bg-clip-text text-transparent">{children}</h2>
+      <h2 className="relative text-2xl md:text-3xl font-bold text-center py-3 md:py-4 bg-gradient-to-r from-teal-200 to-white bg-clip-text text-transparent">{children}</h2>
     </div>
   );
 }
@@ -233,6 +230,7 @@ export default function Home() {
   const [playerSearch, setPlayerSearch] = useState("");
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const PAGE_SIZE = 10;
 
@@ -258,7 +256,7 @@ export default function Home() {
         const week = league.settings?.leg || 1;
         setCurrentWeek(week);
 
-        // Draft history (isolated)
+        // Draft history
         try {
           const boards: DraftBoard[] = [...sheetBoards];
           let currentLeagueId: string | null = leagueId;
@@ -345,44 +343,46 @@ export default function Home() {
           try {
             const txRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/transactions/${w}`);
             const txs = await txRes.json();
-            txs.forEach((tx: any) => {
-              if (tx.status !== "complete") return;
-              const created = tx.created || tx.status_updated || 0;
-              const rosterIds = tx.roster_ids || [];
-              const teamNames = rosterIds.map((id: number) => teamByRoster[id] || "Unknown");
-              if (tx.type === "trade" && teamNames.length >= 2) {
-                const sides: TradeSide[] = teamNames.map((teamName: string, idx: number) => {
-                  const received: string[] = [];
-                  const gave: string[] = [];
-                  Object.keys(tx.adds || {}).forEach((id) => { if (tx.adds[id] === rosterIds[idx]) received.push(sleeperName(id)); });
-                  Object.keys(tx.drops || {}).forEach((id) => { if (tx.drops[id] === rosterIds[idx]) gave.push(sleeperName(id)); });
-                  (tx.draft_picks || []).forEach((pick: any) => {
-                    if (pick.owner_id === rosterIds[idx]) received.push(formatPick(pick));
-                    if (pick.previous_owner_id === rosterIds[idx]) gave.push(formatPick(pick));
+            if (Array.isArray(txs)) {
+              txs.forEach((tx: any) => {
+                if (tx.status !== "complete") return;
+                const created = tx.created || tx.status_updated || 0;
+                const rosterIds = tx.roster_ids || [];
+                const teamNames = rosterIds.map((id: number) => teamByRoster[id] || "Unknown");
+                if (tx.type === "trade" && teamNames.length >= 2) {
+                  const sides: TradeSide[] = teamNames.map((teamName: string, idx: number) => {
+                    const received: string[] = [];
+                    const gave: string[] = [];
+                    Object.keys(tx.adds || {}).forEach((id) => { if (tx.adds[id] === rosterIds[idx]) received.push(sleeperName(id)); });
+                    Object.keys(tx.drops || {}).forEach((id) => { if (tx.drops[id] === rosterIds[idx]) gave.push(sleeperName(id)); });
+                    (tx.draft_picks || []).forEach((pick: any) => {
+                      if (pick.owner_id === rosterIds[idx]) received.push(formatPick(pick));
+                      if (pick.previous_owner_id === rosterIds[idx]) gave.push(formatPick(pick));
+                    });
+                    (tx.waiver_budget || []).forEach((wb: any) => {
+                      const amount = `$${wb.amount} FAAB`;
+                      if (wb.sender === rosterIds[idx]) gave.push(amount);
+                      if (wb.receiver === rosterIds[idx]) received.push(amount);
+                    });
+                    return { team: teamName, received, gave };
                   });
-                  (tx.waiver_budget || []).forEach((wb: any) => {
-                    const amount = `$${wb.amount} FAAB`;
-                    if (wb.sender === rosterIds[idx]) gave.push(amount);
-                    if (wb.receiver === rosterIds[idx]) received.push(amount);
-                  });
-                  return { team: teamName, received, gave };
-                });
-                allItems.push({ kind: "trade", week: w, sides, created });
-                teamNames.forEach((name: string) => { txCountByTeam[name] = (txCountByTeam[name] || 0) + 1; });
-              } else {
-                const teamName = teamNames[0] || "Unknown";
-                const adds = Object.keys(tx.adds || {}).map(sleeperName);
-                const drops = Object.keys(tx.drops || {}).map(sleeperName);
-                let faab: number | undefined;
-                if (tx.waiver_budget && tx.waiver_budget.length) {
-                  faab = tx.waiver_budget[0].amount;
-                } else if (tx.metadata?.amount) {
-                  faab = Number(tx.metadata.amount);
+                  allItems.push({ kind: "trade", week: w, sides, created });
+                  teamNames.forEach((name: string) => { txCountByTeam[name] = (txCountByTeam[name] || 0) + 1; });
+                } else {
+                  const teamName = teamNames[0] || "Unknown";
+                  const adds = Object.keys(tx.adds || {}).map(sleeperName);
+                  const drops = Object.keys(tx.drops || {}).map(sleeperName);
+                  let faab: number | undefined;
+                  if (tx.waiver_budget && tx.waiver_budget.length) {
+                    faab = tx.waiver_budget[0].amount;
+                  } else if (tx.metadata?.amount) {
+                    faab = Number(tx.metadata.amount);
+                  }
+                  allItems.push({ kind: "move", week: w, team: teamName, type: tx.type, adds, drops, created, faab });
+                  if (tx.type === "waiver" || tx.type === "free_agent") txCountByTeam[teamName] = (txCountByTeam[teamName] || 0) + 1;
                 }
-                allItems.push({ kind: "move", week: w, team: teamName, type: tx.type, adds, drops, created, faab });
-                if (tx.type === "waiver" || tx.type === "free_agent") txCountByTeam[teamName] = (txCountByTeam[teamName] || 0) + 1;
-              }
-            });
+              });
+            }
           } catch (e) {
             console.warn(`Week ${w} transactions failed`, e);
           }
@@ -417,7 +417,7 @@ export default function Home() {
         });
         setStandings(data.sort((a, b) => b.wins - a.wins || b.pf - a.pf));
 
-        // Matchups + Sleeper weekly projections (half PPR) via proxy
+        // Projections
         let projMap: Record<string, number> = {};
         try {
           const projRes = await fetch(`/api/projections?week=${week}`);
@@ -430,55 +430,62 @@ export default function Home() {
             });
           }
         } catch (e) {
-          console.warn("Sleeper projections failed", e);
+          console.warn("Projections failed", e);
         }
 
-        const matchupsRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
-        const matchupData = await matchupsRes.json();
+        // Matchups (safer)
+        let pairs: MatchupPair[] = [];
+        try {
+          const matchupsRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
+          if (matchupsRes.ok) {
+            const matchupData = await matchupsRes.json();
+            if (Array.isArray(matchupData)) {
+              const starterProj: Record<number, number> = {};
+              matchupData.forEach((m: any) => {
+                let total = 0;
+                (m.starters || []).forEach((id: string) => {
+                  if (id) total += projMap[id] || 0;
+                });
+                starterProj[m.roster_id] = Math.round(total * 10) / 10;
+              });
 
-        const starterProj: Record<number, number> = {};
-        matchupData.forEach((m: any) => {
-          let total = 0;
-          (m.starters || []).forEach((id: string) => {
-            if (!id) return;
-            total += projMap[id] || 0;
-          });
-          starterProj[m.roster_id] = Math.round(total * 10) / 10;
-        });
-
-        const seen = new Set<number>();
-        const pairs: MatchupPair[] = [];
-        matchupData.forEach((m: any) => {
-          if (seen.has(m.matchup_id)) return;
-          seen.add(m.matchup_id);
-          const opp = matchupData.find((x: any) => x.matchup_id === m.matchup_id && x.roster_id !== m.roster_id);
-          if (!opp) return;
-          pairs.push({
-            team1: teamByRoster[m.roster_id] || "Unknown",
-            team2: teamByRoster[opp.roster_id] || "Unknown",
-            points1: Number(m.points) || 0,
-            points2: Number(opp.points) || 0,
-            proj1: starterProj[m.roster_id] || 0,
-            proj2: starterProj[opp.roster_id] || 0,
-          });
-        });
+              const seen = new Set<number>();
+              matchupData.forEach((m: any) => {
+                if (seen.has(m.matchup_id)) return;
+                seen.add(m.matchup_id);
+                const opp = matchupData.find((x: any) => x.matchup_id === m.matchup_id && x.roster_id !== m.roster_id);
+                if (!opp) return;
+                pairs.push({
+                  team1: teamByRoster[m.roster_id] || "Unknown",
+                  team2: teamByRoster[opp.roster_id] || "Unknown",
+                  points1: Number(m.points) || 0,
+                  points2: Number(opp.points) || 0,
+                  proj1: starterProj[m.roster_id] || 0,
+                  proj2: starterProj[opp.roster_id] || 0,
+                });
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("Matchups failed", e);
+        }
         setMatchups(pairs);
 
-        // News
+        // News via proxy
         try {
-          const newsRes = await fetch(`${FP_BASE}/nfl/news?limit=8`, { headers: { "x-api-key": FP_KEY } });
+          const newsRes = await fetch("/api/news");
           if (newsRes.ok) {
             const newsData = await newsRes.json();
             setNews((newsData.items || []).map((n: any) => ({
               title: n.title,
               link: n.link,
-              created: n.created_formated || n.created,
+              created: n.created_formated || n.created || "",
             })));
           } else {
             setNews([]);
           }
         } catch (e) {
-          console.warn("FantasyPros news failed", e);
+          console.warn("News failed", e);
           setNews([]);
         }
 
@@ -504,7 +511,7 @@ export default function Home() {
   const valueSorted = [...standings].sort((a, b) => (b.value || 0) - (a.value || 0));
   const maxVal = Math.max(...valueSorted.map(t => t.value || 0), 1);
   const bar = (val: number, color: string) => (
-    <div className="w-24 bg-zinc-800 rounded-full h-2 mt-1">
+    <div className="w-16 md:w-24 bg-zinc-800 rounded-full h-2 mt-1">
       <div className={`h-2 rounded-full ${color}`} style={{ width: `${Math.min(100, ((val || 0) / maxVal) * 100)}%` }} />
     </div>
   );
@@ -542,6 +549,11 @@ export default function Home() {
     { id: "charter" as Section, label: "League Charter" },
   ];
 
+  const handleNavClick = (id: Section) => {
+    setSection(id);
+    setMobileMenuOpen(false);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
@@ -552,25 +564,89 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
-      <aside className="w-72 border-r border-teal-900/40 bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 p-6 shrink-0">
-        <div className="mb-8">
-          <h1 className="text-lg font-bold leading-tight bg-gradient-to-r from-teal-300 to-zinc-100 bg-clip-text text-transparent">Dynasty Fantasy Football: Champion Of The Sun</h1>
-          <p className="text-xs text-teal-500/70 mt-1">2026</p>
+      {/* Mobile top bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-zinc-900/95 border-b border-teal-900/40 px-4 py-3 flex items-center justify-between">
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className="p-2 rounded-lg hover:bg-zinc-800"
+          aria-label="Open menu"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <span className="text-sm font-semibold text-teal-300 truncate">Champion Of The Sun</span>
+        <div className="w-10" />
+      </div>
+
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 bg-black/60 z-40" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
+      <aside
+        className={`
+          fixed md:static inset-y-0 left-0 z-50
+          w-72 border-r border-teal-900/40 bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 p-6 shrink-0
+          transform transition-transform duration-200 ease-in-out
+          ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
+          md:translate-x-0
+        `}
+      >
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold leading-tight bg-gradient-to-r from-teal-300 to-zinc-100 bg-clip-text text-transparent">
+              Dynasty Fantasy Football: Champion Of The Sun
+            </h1>
+            <p className="text-xs text-teal-500/70 mt-1">2026</p>
+          </div>
+          <button onClick={() => setMobileMenuOpen(false)} className="md:hidden p-1 text-zinc-400 hover:text-white" aria-label="Close menu">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
         <nav className="space-y-1">
           {navItems.map((item) => (
-            <button key={item.id} onClick={() => setSection(item.id)} className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-all min-h-[44px] ${section === item.id ? "bg-teal-600 text-white shadow-lg shadow-teal-900/50" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+            <button
+              key={item.id}
+              onClick={() => handleNavClick(item.id)}
+              className={`w-full text-left px-4 py-3 rounded-lg text-sm transition-all min-h-[44px] ${
+                section === item.id ? "bg-teal-600 text-white shadow-lg shadow-teal-900/50" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
+              }`}
+            >
               {item.label}
             </button>
           ))}
         </nav>
       </aside>
 
-      <main className="flex-1 p-4 md:p-8 overflow-auto">
+      <main className="flex-1 p-3 md:p-8 overflow-auto pt-16 md:pt-8">
         {section === "standings" && (
           <div>
             <PageTitle>Standings & Matchups</PageTitle>
-            <div className="bg-zinc-900/70 border border-teal-900/30 rounded-2xl overflow-hidden shadow-xl shadow-black/30 mb-10">
+
+            <div className="md:hidden space-y-3 mb-8">
+              {sorted.map((team, i) => (
+                <div key={team.team} className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-xs font-bold">{teamInitials(team.team)}</span>
+                      <span className="font-medium">{team.team}</span>
+                    </div>
+                    <span className="text-sm text-zinc-400">#{i + 1}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>W-L: <span className="font-medium">{team.wins}-{team.losses}</span></div>
+                    <div>PF: <span className="font-medium">{team.pf.toFixed(1)}</span></div>
+                    <div>PA: <span className="font-medium">{team.pa.toFixed(1)}</span></div>
+                    <div>Max PF: <span className="font-medium">{team.maxPf.toFixed(1)}</span></div>
+                    <div className="col-span-2">TrnsAct: <span className="font-medium">{team.totalTransactions}</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden md:block bg-zinc-900/70 border border-teal-900/30 rounded-2xl overflow-hidden shadow-xl shadow-black/30 mb-10">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -608,14 +684,15 @@ export default function Home() {
 
             <div className="text-center mb-4">
               <h3 className="text-xl font-semibold text-teal-300">Week {currentWeek} Matchups</h3>
-              <p className="text-xs text-zinc-500 mt-1">Projections: Sleeper weekly half-PPR (full week, not remaining)</p>
+              <p className="text-xs text-zinc-500 mt-1">Projections: Sleeper weekly half-PPR (full week)</p>
             </div>
-            <div className="space-y-4 max-w-3xl mx-auto mb-12">
+            <div className="space-y-3 md:space-y-4 max-w-3xl mx-auto mb-10">
+              {matchups.length === 0 && <p className="text-center text-zinc-500">No matchups loaded yet.</p>}
               {matchups.map((m, i) => (
-                <div key={i} className="bg-zinc-900/70 border-2 border-teal-800/60 rounded-2xl p-5 hover:border-teal-500 transition shadow-lg">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1 text-right">
-                      <div className="font-medium flex items-center justify-end gap-2">
+                <div key={i} className="bg-zinc-900/70 border-2 border-teal-800/60 rounded-2xl p-4 md:p-5 hover:border-teal-500 transition shadow-lg">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="flex-1 text-center sm:text-right">
+                      <div className="font-medium flex items-center justify-center sm:justify-end gap-2">
                         <span className="w-6 h-6 rounded-full bg-teal-600 flex items-center justify-center text-xs">{teamInitials(m.team1)}</span>
                         {m.team1}
                       </div>
@@ -623,8 +700,8 @@ export default function Home() {
                       <div className="text-xs text-zinc-500">Proj {m.proj1.toFixed(1)}</div>
                     </div>
                     <div className="text-zinc-500 text-sm font-medium">VS</div>
-                    <div className="flex-1 text-left">
-                      <div className="font-medium flex items-center gap-2">
+                    <div className="flex-1 text-center sm:text-left">
+                      <div className="font-medium flex items-center justify-center sm:justify-start gap-2">
                         <span className="w-6 h-6 rounded-full bg-teal-600 flex items-center justify-center text-xs">{teamInitials(m.team2)}</span>
                         {m.team2}
                       </div>
@@ -638,8 +715,8 @@ export default function Home() {
 
             <div className="max-w-3xl mx-auto">
               <h3 className="text-xl font-semibold mb-4 text-center text-teal-300">Fantasy News</h3>
-              <div className="bg-zinc-900/70 border border-teal-900/30 rounded-2xl p-5 space-y-3">
-                {news.length === 0 && <p className="text-sm text-zinc-500 text-center">No news available (FantasyPros may be blocked from the browser).</p>}
+              <div className="bg-zinc-900/70 border border-teal-900/30 rounded-2xl p-4 md:p-5 space-y-3">
+                {news.length === 0 && <p className="text-sm text-zinc-500 text-center">No news available.</p>}
                 {news.map((n, i) => (
                   <a key={i} href={n.link} target="_blank" rel="noreferrer" className="block text-sm hover:text-teal-300 transition border-b border-zinc-800/50 last:border-0 pb-2">
                     <div className="font-medium">{n.title}</div>
@@ -654,76 +731,71 @@ export default function Home() {
         {section === "transactions" && (
           <div>
             <PageTitle>Transactions</PageTitle>
-            <div className="mb-6 flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <select value={txFilter} onChange={(e) => setTxFilter(e.target.value)} className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm min-h-[44px]">
+            <div className="mb-4 flex flex-col gap-3">
+              <select value={txFilter} onChange={(e) => setTxFilter(e.target.value)} className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm">
                 {teams.map((t) => <option key={t} value={t}>{t === "all" ? "All Teams" : t}</option>)}
               </select>
-              <select value={txTypeFilter} onChange={(e) => setTxTypeFilter(e.target.value as TxTypeFilter)} className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm min-h-[44px]">
+              <select value={txTypeFilter} onChange={(e) => setTxTypeFilter(e.target.value as TxTypeFilter)} className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm">
                 <option value="all">All Types</option>
                 <option value="waiver_fa">Waiver & Free Agent</option>
                 <option value="trade">Trades</option>
               </select>
             </div>
-            <div className="max-w-md mx-auto mb-6 relative">
-              <input type="text" placeholder="Search player (type 3+ letters)..." value={playerSearch} onChange={(e) => { setPlayerSearch(e.target.value); setSelectedPlayer(null); }} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm min-h-[44px]" />
+            <div className="mb-4 relative">
+              <input type="text" placeholder="Search player (3+ letters)..." value={playerSearch} onChange={(e) => { setPlayerSearch(e.target.value); setSelectedPlayer(null); }} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm" />
               {playerSuggestions.length > 0 && !selectedPlayer && (
                 <div className="absolute z-10 mt-1 w-full bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg max-h-48 overflow-auto">
                   {playerSuggestions.map((name) => (
-                    <button key={name} onClick={() => { setSelectedPlayer(name); setPlayerSearch(name); }} className="block w-full text-left px-4 py-3 text-sm hover:bg-zinc-800 min-h-[44px]">{name}</button>
+                    <button key={name} onClick={() => { setSelectedPlayer(name); setPlayerSearch(name); }} className="block w-full text-left px-4 py-3 text-sm hover:bg-zinc-800">{name}</button>
                   ))}
                 </div>
               )}
-              {selectedPlayer && <button onClick={() => { setSelectedPlayer(null); setPlayerSearch(""); }} className="mt-2 text-xs text-teal-400 hover:underline">Clear player filter ({selectedPlayer})</button>}
+              {selectedPlayer && <button onClick={() => { setSelectedPlayer(null); setPlayerSearch(""); }} className="mt-2 text-xs text-teal-400">Clear ({selectedPlayer})</button>}
             </div>
-            <div className="space-y-4 max-w-2xl mx-auto">
+            <div className="space-y-3">
+              {pagedTx.length === 0 && <p className="text-zinc-500 text-center">No transactions found.</p>}
               {pagedTx.map((item, i) => {
                 if (item.kind === "trade") {
                   return (
-                    <div key={i} className="bg-zinc-800/60 border border-amber-900/40 rounded-2xl p-5 shadow-lg hover:border-amber-700/60 transition">
-                      <div className="flex items-center gap-2 text-xs text-zinc-500 mb-3">
+                    <div key={i} className="bg-zinc-800/60 border border-amber-900/40 rounded-xl p-4">
+                      <div className="flex items-center gap-2 text-xs text-zinc-500 mb-2">
                         <span>Week {item.week}</span>
                         <span className={`px-2 py-0.5 rounded-full border text-[10px] font-medium ${badgeColor("trade")}`}>TRADE</span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {item.sides.map((side, idx) => (
-                          <div key={idx} className="border border-zinc-600 rounded-xl p-3 bg-zinc-900/40">
-                            <div className="font-medium mb-2 flex items-center gap-2">
-                              <span className="w-6 h-6 rounded-full bg-teal-600 flex items-center justify-center text-xs">{teamInitials(side.team)}</span>
-                              {side.team}
-                            </div>
-                            {(side.received || []).length > 0 && <div className="text-sm text-teal-400">+ {side.received.join(", ")}</div>}
-                            {(side.gave || []).length > 0 && <div className="text-sm text-zinc-400">- {side.gave.join(", ")}</div>}
+                      {item.sides.map((side, idx) => (
+                        <div key={idx} className="border border-zinc-700 rounded-lg p-3 mb-2 last:mb-0 bg-zinc-900/40">
+                          <div className="font-medium mb-1 flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-teal-600 flex items-center justify-center text-[10px]">{teamInitials(side.team)}</span>
+                            {side.team}
                           </div>
-                        ))}
-                      </div>
+                          {(side.received || []).length > 0 && <div className="text-sm text-teal-400">+ {side.received.join(", ")}</div>}
+                          {(side.gave || []).length > 0 && <div className="text-sm text-zinc-400">- {side.gave.join(", ")}</div>}
+                        </div>
+                      ))}
                     </div>
                   );
                 }
                 return (
-                  <div key={i} className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 hover:border-teal-800 transition">
-                    <div className="flex justify-between text-sm items-center">
+                  <div key={i} className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4">
+                    <div className="flex justify-between text-sm items-center mb-1">
                       <span className="font-medium flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-teal-600 flex items-center justify-center text-xs">{teamInitials(item.team)}</span>
+                        <span className="w-5 h-5 rounded-full bg-teal-600 flex items-center justify-center text-[10px]">{teamInitials(item.team)}</span>
                         {item.team}
                       </span>
-                      <span className="flex items-center gap-2 text-zinc-500">
-                        Week {item.week}
-                        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-medium ${badgeColor(item.type)}`}>{item.type.toUpperCase()}</span>
-                      </span>
+                      <span className="text-zinc-500 text-xs">Week {item.week} · {item.type}</span>
                     </div>
-                    {item.adds.length > 0 && <div className="text-sm text-teal-400 mt-1">+ {item.adds.join(", ")}</div>}
+                    {item.adds.length > 0 && <div className="text-sm text-teal-400">+ {item.adds.join(", ")}</div>}
                     {item.drops.length > 0 && <div className="text-sm text-zinc-400">- {item.drops.join(", ")}</div>}
-                    {item.faab !== undefined && item.faab > 0 && <div className="text-sm text-amber-300 mt-1">${item.faab} FAAB</div>}
+                    {item.faab !== undefined && item.faab > 0 && <div className="text-sm text-amber-300">${item.faab} FAAB</div>}
                   </div>
                 );
               })}
-              {pagedTx.length === 0 && <p className="text-zinc-500 text-center">No transactions found.</p>}
             </div>
             {totalPages > 1 && (
-              <div className="flex justify-center items-center gap-4 mt-8 text-sm">
-                <button onClick={() => setTxPage((p) => Math.max(1, p - 1))} disabled={safePage === 1} className="px-4 py-2 rounded border border-zinc-700 disabled:opacity-40 hover:bg-zinc-800 min-h-[44px]">‹</button>
+              <div className="flex justify-center items-center gap-4 mt-6 text-sm">
+                <button onClick={() => setTxPage((p) => Math.max(1, p - 1))} disabled={safePage === 1} className="px-4 py-2 rounded border border-zinc-700 disabled:opacity-40">‹</button>
                 <span>Page {safePage}</span>
-                <button onClick={() => setTxPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} className="px-4 py-2 rounded border border-zinc-700 disabled:opacity-40 hover:bg-zinc-800 min-h-[44px]">›</button>
+                <button onClick={() => setTxPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} className="px-4 py-2 rounded border border-zinc-700 disabled:opacity-40">›</button>
               </div>
             )}
           </div>
@@ -732,134 +804,133 @@ export default function Home() {
         {section === "values" && (
           <div>
             <PageTitle>Team Values</PageTitle>
-            <div className="flex flex-col items-center gap-6 mb-6">
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-zinc-400 w-28 text-right">League Type</span>
+            <div className="flex flex-col gap-4 mb-6 items-center">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-zinc-400">League Type</span>
                 <div className="inline-flex rounded-lg border border-teal-800 bg-zinc-800 p-1">
-                  <button onClick={() => setFormat("sf_tep")} className={`px-4 py-2 text-sm rounded-md transition min-h-[40px] ${format === "sf_tep" ? "bg-teal-600 text-white" : "text-zinc-400 hover:text-white"}`}>Superflex + TEP</button>
-                  <button onClick={() => setFormat("1qb_notep")} className={`px-4 py-2 text-sm rounded-md transition min-h-[40px] ${format === "1qb_notep" ? "bg-teal-600 text-white" : "text-zinc-400 hover:text-white"}`}>1QB + Non-TEP</button>
+                  <button onClick={() => setFormat("sf_tep")} className={`px-3 py-1.5 text-xs rounded-md ${format === "sf_tep" ? "bg-teal-600 text-white" : "text-zinc-400"}`}>SF + TEP</button>
+                  <button onClick={() => setFormat("1qb_notep")} className={`px-3 py-1.5 text-xs rounded-md ${format === "1qb_notep" ? "bg-teal-600 text-white" : "text-zinc-400"}`}>1QB</button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-zinc-400 w-28 text-right">Values From</span>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-zinc-400">Values From</span>
                 <div className="inline-flex rounded-lg border border-teal-800 bg-zinc-800 p-1">
-                  <button onClick={() => setValueSource("statsguy")} className={`px-4 py-2 text-sm rounded-md transition min-h-[40px] ${valueSource === "statsguy" ? "bg-teal-600 text-white" : "text-zinc-400 hover:text-white"}`}>Stats Guy</button>
-                  <button onClick={() => setValueSource("fantasycalc")} className={`px-4 py-2 text-sm rounded-md transition min-h-[40px] ${valueSource === "fantasycalc" ? "bg-teal-600 text-white" : "text-zinc-400 hover:text-white"}`}>FantasyCalc</button>
+                  <button onClick={() => setValueSource("statsguy")} className={`px-3 py-1.5 text-xs rounded-md ${valueSource === "statsguy" ? "bg-teal-600 text-white" : "text-zinc-400"}`}>Stats Guy</button>
+                  <button onClick={() => setValueSource("fantasycalc")} className={`px-3 py-1.5 text-xs rounded-md ${valueSource === "fantasycalc" ? "bg-teal-600 text-white" : "text-zinc-400"}`}>FantasyCalc</button>
                 </div>
               </div>
             </div>
-            <div className="bg-zinc-900/70 border border-teal-900/30 rounded-2xl p-4 md:p-6 shadow-xl shadow-black/30 space-y-6">
+
+            <div className="md:hidden space-y-3 mb-6">
+              {valueSorted.map((team, i) => (
+                <div key={team.team} onClick={() => setSelectedTeam(team)} className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 cursor-pointer">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center text-xs font-bold">{teamInitials(team.team)}</span>
+                      <span className="font-medium">{team.team}</span>
+                    </div>
+                    <span className="text-teal-400 font-medium">{(team.value || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1 text-xs text-center">
+                    <div>QB<br/>{(team.qb || 0).toLocaleString()}</div>
+                    <div>RB<br/>{(team.rb || 0).toLocaleString()}</div>
+                    <div>WR<br/>{(team.wr || 0).toLocaleString()}</div>
+                    <div>TE<br/>{(team.te || 0).toLocaleString()}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden md:block bg-zinc-900/70 border border-teal-900/30 rounded-2xl p-4 md:p-6 shadow-xl mb-6">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-zinc-400 border-b border-zinc-800">
-                      <th className="px-4 md:px-5 py-3 text-left font-medium">RK</th>
-                      <th className="px-4 md:px-5 py-3 text-left font-medium">TEAM</th>
-                      <th className="px-4 md:px-5 py-3 text-right font-medium">TOTAL</th>
-                      <th className="px-4 md:px-5 py-3 text-right font-medium">QB</th>
-                      <th className="px-4 md:px-5 py-3 text-right font-medium">RB</th>
-                      <th className="px-4 md:px-5 py-3 text-right font-medium">WR</th>
-                      <th className="px-4 md:px-5 py-3 text-right font-medium">TE</th>
+                      <th className="px-4 py-3 text-left">RK</th>
+                      <th className="px-4 py-3 text-left">TEAM</th>
+                      <th className="px-4 py-3 text-right">TOTAL</th>
+                      <th className="px-4 py-3 text-right">QB</th>
+                      <th className="px-4 py-3 text-right">RB</th>
+                      <th className="px-4 py-3 text-right">WR</th>
+                      <th className="px-4 py-3 text-right">TE</th>
                     </tr>
                   </thead>
                   <tbody>
                     {valueSorted.map((team, i) => (
-                      <tr key={team.team} onClick={() => setSelectedTeam(team)} className={`border-b border-zinc-800/50 last:border-0 hover:bg-teal-950/30 cursor-pointer transition h-16 ${i % 2 === 1 ? "bg-zinc-800/40" : "bg-zinc-900/20"} ${selectedTeam?.team === team.team ? "bg-teal-950/40" : ""}`}>
-                        <td className="px-4 md:px-5 py-0 text-zinc-400 align-middle">{i + 1}</td>
-                        <td className="px-4 md:px-5 py-0 font-medium align-middle">
+                      <tr key={team.team} onClick={() => setSelectedTeam(team)} className={`border-b border-zinc-800/50 hover:bg-teal-950/30 cursor-pointer h-16 ${i % 2 === 1 ? "bg-zinc-800/40" : ""} ${selectedTeam?.team === team.team ? "bg-teal-950/40" : ""}`}>
+                        <td className="px-4 py-0 text-zinc-400 align-middle">{i + 1}</td>
+                        <td className="px-4 py-0 font-medium align-middle">
                           <div className="flex items-center gap-2">
-                            <span className="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center text-xs font-bold shrink-0">{teamInitials(team.team)}</span>
-                            <span className="leading-tight">{team.team}</span>
+                            <span className="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center text-xs font-bold">{teamInitials(team.team)}</span>
+                            {team.team}
                           </div>
                         </td>
-                        <td className="px-4 md:px-5 py-0 text-right font-medium text-teal-400 align-middle">{(team.value || 0).toLocaleString()}</td>
-                        <td className="px-4 md:px-5 py-0 text-right align-middle"><div>{(team.qb || 0).toLocaleString()}</div>{bar(team.qb || 0, "bg-blue-500")}</td>
-                        <td className="px-4 md:px-5 py-0 text-right align-middle"><div>{(team.rb || 0).toLocaleString()}</div>{bar(team.rb || 0, "bg-green-500")}</td>
-                        <td className="px-4 md:px-5 py-0 text-right align-middle"><div>{(team.wr || 0).toLocaleString()}</div>{bar(team.wr || 0, "bg-emerald-500")}</td>
-                        <td className="px-4 md:px-5 py-0 text-right align-middle"><div>{(team.te || 0).toLocaleString()}</div>{bar(team.te || 0, "bg-amber-500")}</td>
+                        <td className="px-4 py-0 text-right font-medium text-teal-400 align-middle">{(team.value || 0).toLocaleString()}</td>
+                        <td className="px-4 py-0 text-right align-middle"><div>{(team.qb || 0).toLocaleString()}</div>{bar(team.qb || 0, "bg-blue-500")}</td>
+                        <td className="px-4 py-0 text-right align-middle"><div>{(team.rb || 0).toLocaleString()}</div>{bar(team.rb || 0, "bg-green-500")}</td>
+                        <td className="px-4 py-0 text-right align-middle"><div>{(team.wr || 0).toLocaleString()}</div>{bar(team.wr || 0, "bg-emerald-500")}</td>
+                        <td className="px-4 py-0 text-right align-middle"><div>{(team.te || 0).toLocaleString()}</div>{bar(team.te || 0, "bg-amber-500")}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-zinc-500">
-                Values from{" "}
-                {valueSource === "fantasycalc" ? (
-                  <a href="https://fantasycalc.com" target="_blank" rel="noreferrer" className="underline decoration-teal-500/50 hover:decoration-teal-400">FantasyCalc</a>
-                ) : (
-                  <a href="https://statsguyfantasy.com" target="_blank" rel="noreferrer" className="underline decoration-teal-500/50 hover:decoration-teal-400">Stats Guy Fantasy</a>
-                )}
-                . Draft picks not included.
-              </p>
+            </div>
 
-              {/* Starters vs Bench + Details — side-by-side on md+, stacked on mobile, no internal scroll */}
-              <div className="flex flex-col lg:flex-row gap-6">
-                <div className="lg:w-80 shrink-0 border border-teal-900/40 rounded-xl overflow-hidden bg-zinc-800/40">
-                  <div className="px-5 py-4 border-b border-zinc-700 bg-zinc-900/50">
-                    <h3 className="font-semibold text-teal-300">Starters vs Bench</h3>
-                  </div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-zinc-400 border-b border-zinc-700 bg-zinc-900/30">
-                        <th className="px-4 py-2 text-left font-medium">TEAM</th>
-                        <th className="px-4 py-2 text-right font-medium">STARTERS</th>
-                        <th className="px-4 py-2 text-right font-medium">BENCH</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {valueSorted.map((team) => (
-                        <tr
-                          key={team.team}
-                          onClick={() => setSelectedTeam(team)}
-                          className={`border-b border-zinc-700/50 last:border-0 hover:bg-teal-950/30 cursor-pointer h-12 ${selectedTeam?.team === team.team ? "bg-teal-950/50" : ""}`}
-                        >
-                          <td className="px-4 py-0 font-medium align-middle">
-                            <div className="flex items-center gap-2">
-                              <span className="w-6 h-6 rounded-full bg-teal-600 flex items-center justify-center text-xs shrink-0">{teamInitials(team.team)}</span>
-                              <span className="leading-tight">{team.team}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-0 text-right text-teal-400 align-middle">{(team.starters || 0).toLocaleString()}</td>
-                          <td className="px-4 py-0 text-right text-zinc-400 align-middle">{(team.bench || 0).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            <p className="text-xs text-zinc-500 mb-6">
+              Values from {valueSource === "fantasycalc" ? "FantasyCalc" : "Stats Guy Fantasy"}. Draft picks not included.
+            </p>
+
+            <div className="flex flex-col gap-4">
+              <div className="border border-teal-900/40 rounded-xl overflow-hidden bg-zinc-800/40">
+                <div className="px-4 py-3 border-b border-zinc-700 bg-zinc-900/50">
+                  <h3 className="font-semibold text-teal-300">Starters vs Bench</h3>
                 </div>
-
-                <div className="flex-1 border border-teal-900/40 rounded-xl p-6 bg-zinc-800/30 min-h-[300px]">
-                  {selectedTeam ? (
-                    <>
-                      <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-teal-200">
-                        <span className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-sm">{teamInitials(selectedTeam.team)}</span>
-                        {selectedTeam.team}
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <h4 className="text-teal-400 font-medium mb-2">Starters</h4>
-                          {selectedTeam.starterPlayers.map((p, idx) => (
-                            <div key={idx} className="flex justify-between text-sm py-1.5 border-b border-zinc-700/50">
-                              <span>{p.name} <span className="text-zinc-500">({p.position})</span></span>
-                              <span className="text-teal-300">{p.value.toLocaleString()}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div>
-                          <h4 className="text-zinc-400 font-medium mb-2">Bench</h4>
-                          {selectedTeam.benchPlayers.map((p, idx) => (
-                            <div key={idx} className="flex justify-between text-sm py-1.5 border-b border-zinc-700/50">
-                              <span>{p.name} <span className="text-zinc-500">({p.position})</span></span>
-                              <span>{p.value.toLocaleString()}</span>
-                            </div>
-                          ))}
-                        </div>
+                <div className="divide-y divide-zinc-700/50">
+                  {valueSorted.map((team) => (
+                    <div key={team.team} onClick={() => setSelectedTeam(team)} className={`px-4 py-3 flex justify-between items-center cursor-pointer hover:bg-teal-950/30 ${selectedTeam?.team === team.team ? "bg-teal-950/50" : ""}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-teal-600 flex items-center justify-center text-xs">{teamInitials(team.team)}</span>
+                        <span className="text-sm">{team.team}</span>
                       </div>
-                    </>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-zinc-500">Click a team to see player details</div>
-                  )}
+                      <div className="text-sm text-right">
+                        <span className="text-teal-400">{(team.starters || 0).toLocaleString()}</span>
+                        <span className="text-zinc-500 mx-1">/</span>
+                        <span className="text-zinc-400">{(team.bench || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
+
+              {selectedTeam && (
+                <div className="border border-teal-900/40 rounded-xl p-4 bg-zinc-800/30">
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2 text-teal-200">
+                    <span className="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center text-xs">{teamInitials(selectedTeam.team)}</span>
+                    {selectedTeam.team}
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-teal-400 font-medium mb-1 text-sm">Starters</h4>
+                      {selectedTeam.starterPlayers.map((p, idx) => (
+                        <div key={idx} className="flex justify-between text-sm py-1 border-b border-zinc-700/50">
+                          <span>{p.name} ({p.position})</span>
+                          <span className="text-teal-300">{p.value.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <h4 className="text-zinc-400 font-medium mb-1 text-sm">Bench</h4>
+                      {selectedTeam.benchPlayers.map((p, idx) => (
+                        <div key={idx} className="flex justify-between text-sm py-1 border-b border-zinc-700/50">
+                          <span>{p.name} ({p.position})</span>
+                          <span>{p.value.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -867,48 +938,39 @@ export default function Home() {
         {section === "history" && (
           <div>
             <PageTitle>Draft History</PageTitle>
-            <div className="flex justify-center gap-4 mb-6 text-sm">
-              <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-blue-600" /> QB</span>
-              <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-green-600" /> RB</span>
-              <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-purple-600" /> WR</span>
-              <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-orange-500" /> TE</span>
+            <div className="flex flex-wrap justify-center gap-3 mb-4 text-xs">
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-600" /> QB</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-600" /> RB</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-600" /> WR</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500" /> TE</span>
             </div>
-            <p className="text-zinc-400 text-center mb-6 text-sm">Pick number across the top · Round down the side · Manager under each player</p>
-            <div className="space-y-10">
+            <div className="space-y-6">
               {draftBoards.map((board) => (
-                <div key={board.year} className="bg-zinc-900/70 border border-teal-900/30 rounded-2xl p-5 shadow-lg">
-                  <h3 className="text-xl font-semibold mb-2 text-teal-300">{board.year} Rookie Draft</h3>
-                  <div className="text-xs text-zinc-400 mb-4 space-y-1">
-                    <div className="flex flex-wrap gap-x-4">
-                      {board.draftOrder.slice(0, 5).map((m, i) => (
-                        <span key={i} className="min-w-[100px]">{i + 1}. {m}</span>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-x-4">
-                      {board.draftOrder.slice(5, 10).map((m, i) => (
-                        <span key={i} className="min-w-[100px]">{i + 6}. {m}</span>
-                      ))}
-                    </div>
+                <div key={board.year} className="bg-zinc-900/70 border border-teal-900/30 rounded-xl p-4">
+                  <h3 className="text-lg font-semibold mb-2 text-teal-300">{board.year} Rookie Draft</h3>
+                  <div className="text-xs text-zinc-400 mb-3 space-y-1">
+                    <div>{board.draftOrder.slice(0, 5).map((m, i) => `${i + 1}. ${m}`).join(" · ")}</div>
+                    <div>{board.draftOrder.slice(5, 10).map((m, i) => `${i + 6}. ${m}`).join(" · ")}</div>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="text-[11px] border-collapse">
+                    <table className="text-[10px] border-collapse">
                       <thead>
                         <tr>
-                          <th className="px-1 py-1 text-zinc-500 w-8 text-left">Rd</th>
+                          <th className="px-1 py-1 text-zinc-500 w-6">Rd</th>
                           {(board.rounds[0] || []).map((_, idx) => (
-                            <th key={idx} className="px-1 py-1 text-center text-teal-200 font-medium w-[88px]">Pick {idx + 1}</th>
+                            <th key={idx} className="px-1 py-1 text-center text-teal-200 w-16">P{idx + 1}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {board.rounds.map((row, rIdx) => (
                           <tr key={rIdx}>
-                            <td className="px-1 py-1 text-zinc-500 align-top font-medium">{rIdx + 1}</td>
+                            <td className="px-1 py-1 text-zinc-500">{rIdx + 1}</td>
                             {row.map((cell, cIdx) => (
-                              <td key={cIdx} className="px-1 py-1 align-top">
-                                <div className={`h-14 w-[84px] rounded flex flex-col items-center justify-center text-center leading-tight shadow ${posColor[cell.pos] || "bg-zinc-700"}`}>
-                                  <div className="font-medium text-white text-[10px] px-0.5">{cell.player}</div>
-                                  <div className="text-[9px] text-white/80 mt-0.5">{cell.manager}</div>
+                              <td key={cIdx} className="px-0.5 py-0.5">
+                                <div className={`h-12 w-14 rounded flex flex-col items-center justify-center text-center leading-tight ${posColor[cell.pos] || "bg-zinc-700"}`}>
+                                  <div className="font-medium text-white text-[8px] px-0.5">{cell.player.split(" ").pop()}</div>
+                                  <div className="text-[7px] text-white/80">{cell.manager.split(" ")[0]}</div>
                                 </div>
                               </td>
                             ))}
@@ -924,63 +986,44 @@ export default function Home() {
         )}
 
         {section === "charter" && (
-          <div className="max-w-3xl mx-auto">
+          <div>
             <PageTitle>League Charter</PageTitle>
-            <p className="text-sm text-zinc-500 text-center mb-8">Last formal rules update: September 2, 2022. Rules are now decided yearly at the draft.</p>
-            <div className="space-y-8 text-sm leading-relaxed text-zinc-300 bg-zinc-900/50 border border-teal-900/30 rounded-2xl p-6">
+            <p className="text-xs text-zinc-500 text-center mb-6">Last formal rules update: September 2, 2022. Rules are now decided yearly at the draft.</p>
+            <div className="space-y-6 text-sm leading-relaxed text-zinc-300 bg-zinc-900/50 border border-teal-900/30 rounded-xl p-4">
               <section>
-                <h3 className="text-lg font-semibold text-teal-300 mb-2">Article I – Purpose & Members</h3>
+                <h3 className="text-base font-semibold text-teal-300 mb-1">Article I – Purpose & Members</h3>
                 <p>This document outlines the league settings and rules. Amendments may be made upon league vote.</p>
                 <p className="mt-2"><strong>Executive Committee:</strong> Commissioner (Jared), Vice Commissioner (Billy), Tie Break Vote (Chris).</p>
-                <p className="mt-2"><strong>League Members:</strong> Billy, Jared, New Dave, Chris, Beth, Charles, Andrew, Henry, Lucas, Nick.</p>
+                <p className="mt-1"><strong>League Members:</strong> Billy, Jared, New Dave, Chris, Beth, Charles, Andrew, Henry, Lucas, Nick.</p>
               </section>
               <section>
-                <h3 className="text-lg font-semibold text-teal-300 mb-2">Article II – Financials</h3>
-                <p><strong>League Dues:</strong> $75, due at or before the draft (or by draft lottery). Grace periods require advance notice to the commissioner.</p>
-                <p className="mt-2"><strong>Payouts (10 teams):</strong> 1st $400 · 2nd $200 · 3rd $150.</p>
+                <h3 className="text-base font-semibold text-teal-300 mb-1">Article II – Financials</h3>
+                <p><strong>League Dues:</strong> $75, due at or before the draft.</p>
+                <p className="mt-1"><strong>Payouts (10 teams):</strong> 1st $400 · 2nd $200 · 3rd $150.</p>
               </section>
               <section>
-                <h3 className="text-lg font-semibold text-teal-300 mb-2">Article III – League Settings</h3>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>Dynasty league — all players retained year to year</li>
-                  <li>10 teams · Head-to-Head · No divisions · Random schedule from Sleeper</li>
-                  <li>Draft type: Live Standard Draft</li>
-                  <li>Scoring: Fractional points, negative points allowed, 0.5 PPR</li>
-                  <li>Passing: 25 yds/pt · Rushing/Receiving: 10 yds/pt · TDs: 6 pts · 2PT: 2 pts · INT/Fumble Lost: -2</li>
-                  <li>Roster: 20 total · QB, 2WR, 2RB, TE, 2FLEX, 12BN, 2IR · No Kicker or Defense</li>
-                  <li>IR spots must be cleared before Week 16 ends</li>
-                  <li>Playoffs: 4 teams, Weeks 16–17, reseeding, best record vs opponent as tie-breaker</li>
+                <h3 className="text-base font-semibold text-teal-300 mb-1">Article III – League Settings</h3>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Dynasty · 10 teams · 0.5 PPR</li>
+                  <li>Roster: QB, 2WR, 2RB, TE, 2FLEX, 12BN, 2IR</li>
+                  <li>Playoffs: 4 teams, Weeks 16–17</li>
                 </ul>
               </section>
               <section>
-                <h3 className="text-lg font-semibold text-teal-300 mb-2">Article IV – Dynasty & Keeper Settings</h3>
-                <p>Minimum keepers: All. All players drafted or acquired are kept until dropped, retired, or traded. No offseason free agent adds. Waivers lock after the championship through the rookie/FA draft. Rosters expand after the rookie draft then must be cut back to 20 before the next season. Trades allowed in the offseason. Commissioner publishes updates via Google Docs.</p>
+                <h3 className="text-base font-semibold text-teal-300 mb-1">Article IV – Dynasty Settings</h3>
+                <p className="text-xs">All players kept. No offseason free agent adds. Waivers lock after championship through rookie draft. Trades allowed in offseason.</p>
               </section>
               <section>
-                <h3 className="text-lg font-semibold text-teal-300 mb-2">Article V – Player Management</h3>
-                <p><strong>Rookie/FA Draft:</strong> Third week of pre-season when possible. Lottery with reverse order of standings (non-snake). Weighted lottery for non-playoff teams. Only top 3 picks drawn in the lottery (remaining picks reverse standings). 3 rounds. Final rosters due Monday prior to Week 1 TNF. Penalty for missing cuts: commissioner drops drafted players as needed.</p>
-                <p className="mt-2"><strong>Waivers:</strong> FAAB · 2-day waiver · Continual rolling list · Weekly waivers Tuesday.</p>
-                <p className="mt-2"><strong>Trades:</strong> No max · Draft pick trades allowed · Trade deadline Week 11 · Offseason trades open Week 18 · League vote review · 2-day reject window · FAAB trading allowed. Any traded 1st-round pick requires the trading team to pay next year’s dues. No trading picks more than two drafts in advance. Offseason trades reported to commissioner and published via Google Docs.</p>
+                <h3 className="text-base font-semibold text-teal-300 mb-1">Article V – Player Management</h3>
+                <p className="text-xs"><strong>Rookie Draft:</strong> Lottery for top 3, then reverse standings. 3 rounds.</p>
+                <p className="text-xs mt-1"><strong>Waivers:</strong> FAAB · 2-day · Weekly Tuesday.</p>
+                <p className="text-xs mt-1"><strong>Trades:</strong> Deadline Week 11 · FAAB trading allowed · Traded 1sts require next year’s dues.</p>
               </section>
               <section>
-                <h3 className="text-lg font-semibold text-teal-300 mb-2">Article VI – Ownership</h3>
-                <p>Rule changes submitted annually; majority vote required. Quorum = one more than half the managers. No in-season changes unless necessary for league integrity. Tanking not tolerated — missed lineups are set to rankings and scores adjusted. Collusion (loaning players with expectation of return, external payments) is prohibited and reversible. Owners must set lineups; neglect of more than two weeks may result in review of future participation.</p>
-                <p className="mt-2">Retiring owners must notify the commissioner by June 1. New owners assume keepers and picks and must make a minimum 3-year commitment.</p>
+                <h3 className="text-base font-semibold text-teal-300 mb-1">Article VI – Ownership</h3>
+                <p className="text-xs">Rule changes by majority vote. Tanking not tolerated. Owners must set lineups.</p>
               </section>
-              <section>
-                <h3 className="text-lg font-semibold text-teal-300 mb-2">Article VII – Temporary / Historical Notes</h3>
-                <p>2020 COVID rules (minimum 8 weeks for payouts, extra IR, practice squad removed) were later adopted as permanent standards in 2021. Practice squad rules were removed. Favre Rule was revoked in 2020.</p>
-              </section>
-              <section>
-                <h3 className="text-lg font-semibold text-teal-300 mb-2">Article VIII – League Meeting Notes (summary)</h3>
-                <ul className="list-disc list-inside space-y-1">
-                  <li><strong>2019:</strong> Rosters expanded to 20. Lottery standings finalized after Week 14 (consolation bracket excluded). IR must be cleared before Week 16.</li>
-                  <li><strong>2020:</strong> Buy-in raised to $75. Favre Rule removed. Lottery reduced to top 3 picks. Names-in-a-hat lottery. Post-draft roster cuts. Temporary COVID rules approved.</li>
-                  <li><strong>2021:</strong> COVID rules made permanent. Extra starting flex approved for 2022. Platform move to Sleeper. 4th/5th round picks removed starting 2022.</li>
-                  <li><strong>2022:</strong> FAAB trading approved. Reminder that traded 1st-round picks require next year’s dues starting with 2024 picks.</li>
-                </ul>
-              </section>
-              <p className="text-xs text-zinc-500 pt-4">Full historical charter and any proposed amendments are available to members. Contact the commissioner for the complete document.</p>
+              <p className="text-xs text-zinc-500 pt-2">Contact the commissioner for the complete document.</p>
             </div>
           </div>
         )}
