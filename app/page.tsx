@@ -36,6 +36,7 @@ type Format = "sf_tep" | "1qb_notep";
 type ValueSource = "statsguy" | "fantasycalc";
 type Section = "standings" | "transactions" | "values" | "history" | "charter";
 type TxTypeFilter = "all" | "waiver_fa" | "trade";
+type SortKey = "rank" | "pf" | "pa" | "maxPf" | "totalTransactions";
 
 const sheetBoards: DraftBoard[] = [
   {
@@ -223,7 +224,7 @@ export default function Home() {
   const [section, setSection] = useState<Section>("standings");
   const [txFilter, setTxFilter] = useState<string>("all");
   const [txTypeFilter, setTxTypeFilter] = useState<TxTypeFilter>("all");
-  const [sortKey, setSortKey] = useState<"pf" | "pa" | "maxPf" | "totalTransactions" | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [currentWeek, setCurrentWeek] = useState(1);
   const [txPage, setTxPage] = useState(1);
@@ -478,15 +479,25 @@ export default function Home() {
     load();
   }, [format, valueSource]);
 
-  function toggleSort(key: "pf" | "pa" | "maxPf" | "totalTransactions") {
+  function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir(sortDir === "desc" ? "asc" : "desc");
     else { setSortKey(key); setSortDir("desc"); }
   }
-  const sorted = [...standings].sort((a, b) => {
-    if (!sortKey) return 0;
-    return sortDir === "desc" ? b[sortKey] - a[sortKey] : a[sortKey] - b[sortKey];
-  });
-  const arrow = (key: "pf" | "pa" | "maxPf" | "totalTransactions") => sortKey === key ? (sortDir === "desc" ? " ↓" : " ↑") : "";
+
+  const sorted = useMemo(() => {
+    const arr = [...standings];
+    if (sortKey === "rank") {
+      return arr.sort((a, b) => b.wins - a.wins || b.pf - a.pf);
+    }
+    return arr.sort((a, b) => {
+      const va = a[sortKey] || 0;
+      const vb = b[sortKey] || 0;
+      return sortDir === "desc" ? vb - va : va - vb;
+    });
+  }, [standings, sortKey, sortDir]);
+
+  const arrow = (key: SortKey) => sortKey === key ? (sortDir === "desc" ? " ↓" : " ↑") : "";
+
   const valueSorted = [...standings].sort((a, b) => (b.value || 0) - (a.value || 0));
   const maxVal = Math.max(...valueSorted.map(t => t.value || 0), 1);
   const bar = (val: number, color: string) => (
@@ -602,6 +613,27 @@ export default function Home() {
         {section === "standings" && (
           <div>
             <PageTitle>Standings & Matchups</PageTitle>
+
+            {/* Mobile sort bar */}
+            <div className="md:hidden mb-4">
+              <p className="text-xs text-zinc-500 mb-2">Sort by</p>
+              <div className="flex flex-wrap gap-2">
+                {(["rank", "pf", "pa", "maxPf", "totalTransactions"] as SortKey[]).map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => toggleSort(key)}
+                    className={`px-3 py-1.5 text-xs rounded-lg border ${
+                      sortKey === key
+                        ? "bg-teal-600 border-teal-500 text-white"
+                        : "bg-zinc-800 border-zinc-700 text-zinc-300"
+                    }`}
+                  >
+                    {key === "rank" ? "Rank" : key === "pf" ? "PF" : key === "pa" ? "PA" : key === "maxPf" ? "Max PF" : "TrnsAct"}
+                    {arrow(key)}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="md:hidden space-y-3 mb-8">
               {sorted.map((team, i) => (
