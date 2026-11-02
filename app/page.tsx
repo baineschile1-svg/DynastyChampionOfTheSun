@@ -433,13 +433,22 @@ export default function Home() {
           console.warn("Projections failed", e);
         }
 
-        // Matchups (simpler pairing)
+        // Matchups with projections
         let pairs: MatchupPair[] = [];
         try {
           const matchupsRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
           if (matchupsRes.ok) {
             const matchupData = await matchupsRes.json();
             if (Array.isArray(matchupData) && matchupData.length > 0) {
+              const starterProj: Record<number, number> = {};
+              matchupData.forEach((m: any) => {
+                let total = 0;
+                (m.starters || []).forEach((id: string) => {
+                  if (id) total += projMap[id] || 0;
+                });
+                starterProj[m.roster_id] = Math.round(total * 10) / 10;
+              });
+
               const byMatchup: Record<number, any[]> = {};
               matchupData.forEach((m: any) => {
                 if (!byMatchup[m.matchup_id]) byMatchup[m.matchup_id] = [];
@@ -454,8 +463,8 @@ export default function Home() {
                     team2: teamByRoster[m2.roster_id] || "Unknown",
                     points1: Number(m1.points) || 0,
                     points2: Number(m2.points) || 0,
-                    proj1: 0,
-                    proj2: 0,
+                    proj1: starterProj[m1.roster_id] || 0,
+                    proj2: starterProj[m2.roster_id] || 0,
                   });
                 }
               });
