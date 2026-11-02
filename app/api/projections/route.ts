@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server";
 
-const FP_KEY = "S1zuNx6MSd62vH9KcucxL8R7ZTq4yQpc8LJOhciA";
-const FP_BASE = "https://api.fantasypros.com/public/v2/json";
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const week = searchParams.get("week") || "1";
 
-export async function GET() {
   try {
-    const res = await fetch(`${FP_BASE}/nfl/news?limit=8`, {
-      headers: { "x-api-key": FP_KEY },
-    });
+    const res = await fetch(
+      `https://api.sleeper.app/v1/projections/nfl/2026/${week}?season_type=regular`,
+      { next: { revalidate: 300 } }
+    );
     if (!res.ok) {
-      return NextResponse.json({ items: [] }, { status: 200 });
+      return NextResponse.json([], { status: 200 });
     }
     const data = await res.json();
     return NextResponse.json(data);
   } catch (e) {
-    return NextResponse.json({ items: [] }, { status: 200 });
+    return NextResponse.json([], { status: 200 });
   }
 }
